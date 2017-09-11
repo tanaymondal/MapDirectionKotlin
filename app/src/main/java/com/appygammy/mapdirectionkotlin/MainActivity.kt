@@ -4,9 +4,11 @@ import android.os.Bundle
 import android.support.v4.app.ActivityCompat
 import android.support.v7.app.AppCompatActivity
 import android.widget.Toast
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.maps.DirectionsApi
 import com.google.maps.GeoApiContext
@@ -26,15 +28,19 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private val startLatLng = LatLng(22.5706075, 88.4355548)
     private val endLatLng = LatLng(22.512367, 88.128875)
 
+    private fun LatLng.toAndroidLatLng(): com.google.android.gms.maps.model.LatLng {
+        return com.google.android.gms.maps.model.LatLng(this.lat, this.lng)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        init()
+        initMap()
 
     }
 
-    private fun init() {
+    private fun initMap() {
         val fragment = supportFragmentManager.findFragmentById(R.id.map_fragment) as SupportMapFragment
         fragment.getMapAsync(this)
     }
@@ -43,19 +49,26 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         if (googleMap != null)
             this.googleMap = googleMap
 
+        setUpBounds()
+
         getDirectionsDetails(startLatLng, endLatLng, TravelMode.DRIVING)
     }
 
-    private fun addPolyline(results: DirectionsResult) {
-        results.routes
-                .map { PolyUtil.decode(it.overviewPolyline.encodedPath) }
-                .map { googleMap.addPolyline(PolylineOptions().addAll(it)) }
-                .forEach { it.color = ActivityCompat.getColor(this@MainActivity, R.color.black) }
+    private fun setUpBounds() {
+        googleMap.setOnMapLoadedCallback {
+            runOnUiThread {
+                val builder = LatLngBounds.Builder()
+                builder.include(startLatLng.toAndroidLatLng())
+                builder.include(endLatLng.toAndroidLatLng())
+                val llBounds = builder.build()
+
+                googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(llBounds, 50))
+            }
+        }
     }
 
     private fun getDirectionsDetails(origin: LatLng, destination: LatLng, mode: TravelMode) {
         val now = DateTime()
-
         try {
             val req = DirectionsApi.newRequest(getGeoContext())
                     .mode(mode)
@@ -81,14 +94,18 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
             )
         } catch (e: ApiException) {
             e.printStackTrace()
-
         } catch (e: InterruptedException) {
             e.printStackTrace()
-
         } catch (e: IOException) {
             e.printStackTrace()
         }
+    }
 
+    private fun addPolyline(results: DirectionsResult) {
+        results.routes
+                .map { PolyUtil.decode(it.overviewPolyline.encodedPath) }
+                .map { googleMap.addPolyline(PolylineOptions().addAll(it)) }
+                .forEach { it.color = ActivityCompat.getColor(this@MainActivity, R.color.black) }
     }
 
     private fun getGeoContext(): GeoApiContext {
